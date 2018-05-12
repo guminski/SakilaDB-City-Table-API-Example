@@ -21,18 +21,12 @@ Session = sessionmaker(bind=engine)
 session = Session()
 
 
-def make_json_list(data):
+def make_json_list_response(data):
     city_list = list()
     for city in data:
         city_list.append(city.city)
     city_list.sort()
     return jsonify(city_list)
-
-
-def query_string_arg_only_country_name():
-    country = request.args['country_name']
-    cities = session.query(City).join(Country).filter(Country.country == country).all()
-    return make_json_list(cities)
 
 
 @app.route('/')
@@ -52,31 +46,33 @@ def counter_view():
 
 @app.route('/cities', methods=['GET', 'POST'])
 def cities():
+    print(request.method)
     if request.method == 'GET':
-        # validation of possible query strings
 
-        if 'per_page' and 'page' in request.args and 'country_name' not in request.args:
-            limit = request.args.get('per_page')
-            offset = request.args.get('page')
-            cities = session.query(City).limit(limit).offset(int(limit) * (int(offset) - 1)).all()
-            return make_json_list(cities)
+        # Getting all possible expected query strings, otherwise - setting as False
+        per_page = request.args.get('per_page', False)
+        page = request.args.get('page', False)
+        country_name = request.args.get('country_name', False)
 
-        elif 'country_name' in request.args and 'page' not in request.args:
-            return query_string_arg_only_country_name()
+        # Check query strings value and filter data
+        if per_page and page and country_name:
+            cities = session.query(City).join(Country).filter(Country.country == country_name).limit(
+                    per_page).offset(int(per_page) * (int(page) - 1)).all()
+            return make_json_list_response(cities)
 
-        elif 'per_page' and 'page' and 'country_name' in request.args:
-            country_name = request.args['country_name']
-            limit = request.args.get('per_page')
-            offset = request.args.get('page')
-            cities = session.query(City).join(Country).filter(Country.country == country_name).limit(limit).offset(
-                int(limit) * (int(offset) - 1)).all()
-            return make_json_list(cities)
+        elif per_page and page:
+            cities = session.query(City).limit(per_page).offset(int(per_page) * (int(page) - 1)).all()
+            return make_json_list_response(cities)
+
+        elif country_name:
+            cities = session.query(City).join(Country).filter(Country.country == country_name).all()
+            return make_json_list_response(cities)
 
         else:
             all_cities = session.query(City)
-            return make_json_list(all_cities)
+            return make_json_list_response(all_cities)
 
-    elif request.method == 'POST':
+    else:
         # getting posted JSON
         posted_json_data = request.get_json()
         country_data_from_json = {
@@ -84,7 +80,7 @@ def cities():
             'city_name': posted_json_data.get('city_name')
         }
 
-        # constructor to validate country IDs and POSTed data
+        # data to validate if posted country_id exist
         country_id_data = session.query(Country)
         country_id_list = list()
         for country in country_id_data:
