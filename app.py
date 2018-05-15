@@ -11,14 +11,29 @@ from sqlalchemy import create_engine
 from datetime import datetime
 from models import *
 
-
 app = Flask(__name__)
-LOCAL_DB = os.environ['LOCAL_SAKILA_DB']    #
+LOCAL_DB = os.environ['LOCAL_SAKILA_DB']  #
 
 engine = create_engine(f'postgresql+psycopg2://{LOCAL_DB}', echo=True)
 
 Session = sessionmaker(bind=engine)
 session = Session()
+
+
+class InternalServerError(Exception):
+    status_code = 500
+
+    def __init__(self, message, status_code=None, payload=None):
+        Exception.__init__(self)
+        self.message = message
+        if status_code is not None:
+            self.status_code = status_code
+        self.payload = payload
+
+    def to_dict(self):
+        rv = dict(self.payload or ())
+        rv['message'] = self.message
+        return rv
 
 
 def make_json_list_response(data):
@@ -45,7 +60,7 @@ def counter_view():
 
 
 @app.route('/cities', methods=['GET', 'POST'])
-def cities():
+def cities_route():
     print(request.method)
     if request.method == 'GET':
 
@@ -54,10 +69,10 @@ def cities():
         page = request.args.get('page', False)
         country_name = request.args.get('country_name', False)
 
-        # Check query strings value and filter data
+        # Checking given query strings value and filter data
         if per_page and page and country_name:
             cities = session.query(City).join(Country).filter(Country.country == country_name).limit(
-                    per_page).offset(int(per_page) * (int(page) - 1)).all()
+                per_page).offset(int(per_page) * (int(page) - 1)).all()
             return make_json_list_response(cities)
 
         elif per_page and page:
@@ -80,38 +95,41 @@ def cities():
             'city_name': posted_json_data.get('city_name')
         }
 
-        # data to validate if posted country_id exist
+        # validate if posted country_id exist
         country_id_data = session.query(Country)
         country_id_list = list()
         for country in country_id_data:
             country_id_list.append(country.country_id)
 
         if country_data_from_json['country_id'] in country_id_list and 'city_name' in country_data_from_json:
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
             added_city = City(
                 country_id=country_data_from_json['country_id'],
                 city=country_data_from_json['city_name'],
-                last_update=now
+                last_update=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             )
 
-            session.add(added_city)
-            session.commit()
+            try:
+                session.add(added_city)
+                session.commit()
+            except InternalServerError:
+                session.rollback()
+                raise InternalServerError('Insert city to db failed', status_code=500)
 
-            # preparing JSON request after commit to db
+            # JSON response after success db commit
             add_city_success_data = session.query(City).join(Country).filter(
                 City.city == country_data_from_json['city_name']).first()
-            add_city_sucess_json = {
+
+            add_city_success_json = {
                 'country_id': add_city_success_data.country_id,
                 'city_name': add_city_success_data.city,
                 'city_id': add_city_success_data.id
             }
-            return jsonify(add_city_sucess_json)
+            return jsonify(add_city_success_json)
 
         else:
-            return make_response(jsonify({"error": "Wrong json data"}), 400)
+            return make_response(jsonify({"error": "Wrong JSON data"}), 400)
 
 
 if __name__ == '__main__':
     app.run(debug=True)
-
