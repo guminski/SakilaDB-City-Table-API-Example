@@ -12,7 +12,7 @@ from datetime import datetime
 from models import *
 
 app = Flask(__name__)
-LOCAL_DB = os.environ['LOCAL_SAKILA_DB']  #
+LOCAL_DB = os.environ['LOCAL_SAKILA_DB']
 
 engine = create_engine(f'postgresql+psycopg2://{LOCAL_DB}', echo=True)
 
@@ -64,12 +64,12 @@ def cities_route():
     print(request.method)
     if request.method == 'GET':
 
-        # Getting all possible expected query strings, otherwise - setting as False
+        # Getting all expected query strings, if not exist - setting as False
         per_page = request.args.get('per_page', False)
         page = request.args.get('page', False)
         country_name = request.args.get('country_name', False)
 
-        # Checking given query strings value and filter data
+        # Checking query strings value and filter data from db
         if per_page and page and country_name:
             cities = session.query(City).join(Country).filter(Country.country == country_name).limit(
                 per_page).offset(int(per_page) * (int(page) - 1)).all()
@@ -120,12 +120,12 @@ def cities_route():
             add_city_success_data = session.query(City).join(Country).filter(
                 City.city == country_data_from_json['city_name']).first()
 
-            add_city_success_json = {
+            added_city_success_json = {
                 'country_id': add_city_success_data.country_id,
                 'city_name': add_city_success_data.city,
                 'city_id': add_city_success_data.id
             }
-            return jsonify(add_city_success_json)
+            return make_response(jsonify(added_city_success_json), 200)
 
         else:
             return make_response(jsonify({"error": "Wrong JSON data"}), 400)
